@@ -5,7 +5,7 @@
 resource "random_password" "master" {
   length           = 16
   special          = true
-  override_special = "!#$%^&*()-_=+[]{}:;<>?,.|\\"  # no / @ " or space
+  override_special = "!#$%^&*()-_=+[]{}:;<>?,.|\\" # no / @ " or space
 }
 
 resource "random_password" "app_user" {
@@ -40,12 +40,12 @@ data "aws_subnet" "all" {
 
 resource "aws_kms_key" "secrets" {
   description             = "KMS key for encrypting DB credentials in Secrets Manager (fix)"
-  deletion_window_in_days = 30
+  deletion_window_in_days = 7
   enable_key_rotation     = true
 }
 
 resource "aws_kms_alias" "secrets_alias" {
-  name          = var.kms_alias_name
+  name          = "alias/terraform-secrets-key-fix"
   target_key_id = aws_kms_key.secrets.key_id
 }
 
@@ -54,7 +54,7 @@ resource "aws_kms_alias" "secrets_alias" {
 #################################################
 
 resource "aws_secretsmanager_secret" "app_db_user_fix" {
-  name        = var.app_user_secret_name
+  name        = "tf-db-credential"
   description = "Credentials for application DB user (app_user) - fix"
   kms_key_id  = aws_kms_key.secrets.arn
 
@@ -73,7 +73,7 @@ resource "aws_secretsmanager_secret_version" "app_db_user_version_fix" {
     engine   = "aurora-postgresql"
     host     = aws_rds_cluster.aurora.endpoint
     port     = 5432
-    dbname   = var.db_name
+    dbname   = var.db_server_name
   })
 }
 
@@ -81,7 +81,7 @@ resource "aws_secretsmanager_secret_version" "app_db_user_version_fix" {
 # SECRETS MANAGER - MASTER USER
 #################################################
 resource "aws_secretsmanager_secret" "master_creds_fix" {
-  name        = var.master_secret_name
+  name        = "tf-db-master-credential"
   description = "Aurora cluster master credentials - fix"
   kms_key_id  = aws_kms_key.secrets.arn
 
@@ -106,7 +106,7 @@ resource "aws_secretsmanager_secret_version" "master_creds_version_fix" {
 #################################################
 
 resource "aws_db_subnet_group" "aurora_subnets" {
-  name        = var.db_subnet_group_name
+  name        = "db_sg"
   subnet_ids  = data.aws_subnets.default.ids
   description = "Subnet group for Aurora cluster in default VPC (fix)"
 }
@@ -137,34 +137,37 @@ resource "aws_security_group" "aurora_sg" {
 #################################################
 
 resource "aws_rds_cluster" "aurora" {
-  cluster_identifier = var.cluster_identifier
+  cluster_identifier = "tf-aurora-cluster-fix"
   engine             = "aurora-postgresql"
   engine_version     = var.aurora_engine_version
 
   master_username = var.master_username
   master_password = random_password.master.result
 
-  database_name          = var.db_name
-  db_subnet_group_name   = aws_db_subnet_group.aurora_subnets.name
-  vpc_security_group_ids = [aws_security_group.aurora_sg.id]
-
-  skip_final_snapshot     = var.skip_final_snapshot
-  backup_retention_period = var.backup_retention_period
-  preferred_backup_window = var.preferred_backup_window
-  apply_immediately       = true
+  database_name                   = var.db_server_name
+  db_subnet_group_name            = aws_db_subnet_group.aurora_subnets.name
+  vpc_security_group_ids          = [aws_security_group.aurora_sg.id]
+  storage_encrypted               = true
+  preferred_maintenance_window    = "sun:04:00-sun:05:00"
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+  deletion_protection             = false
+  skip_final_snapshot             = true
+  backup_retention_period         = 7
+  preferred_backup_window         = "07:00-09:00"
+  apply_immediately               = true
 }
 
 resource "aws_rds_cluster_instance" "writer" {
-  identifier         = var.instance_identifier
-  cluster_identifier = aws_rds_cluster.aurora.id
-  instance_class     = var.db_instance_class
-  engine             = aws_rds_cluster.aurora.engine
-  engine_version     = aws_rds_cluster.aurora.engine_version
-
-  publicly_accessible  = true
-  db_subnet_group_name = aws_db_subnet_group.aurora_subnets.name
-
-  depends_on = [aws_rds_cluster.aurora]
+  identifier                   = "tf-aurora-instance-1-fix"
+  cluster_identifier           = "aurora-cluster"
+  instance_class               = "db.r6g.large" # change to smaller for cheaper (e.g. db.t3.medium)
+  engine                       = aws_rds_cluster.aurora.engine
+  engine_version               = aws_rds_cluster.aurora.engine_version
+  publicly_accessible          = true
+  db_subnet_group_name         = aws_db_subnet_group.aurora_subnets.name
+  performance_insights_enabled = true
+  monitoring_interval          = 60
+  depends_on                   = [aws_rds_cluster.aurora]
 }
 
 #################################################
@@ -173,7 +176,7 @@ resource "aws_rds_cluster_instance" "writer" {
 
 resource "postgresql_database" "app_db_fix" {
   provider = postgresql.master
-  name     = var.app_db_name
+  name     = var.db_name
 
   depends_on = [
     aws_rds_cluster_instance.writer
@@ -197,7 +200,7 @@ resource "postgresql_role" "app_user_fix" {
 
 resource "postgresql_grant" "app_user_db_grant_fix" {
   provider    = postgresql.master
-  database    = var.db_name
+  database    = var.db_server_name
   role        = postgresql_role.app_user_fix.name
   object_type = "database"
   privileges  = ["CONNECT"]
@@ -211,7 +214,7 @@ resource "postgresql_grant" "app_user_db_grant_fix" {
 
 resource "postgresql_grant" "schema_usage_fix" {
   provider    = postgresql.master
-  database    = var.db_name
+  database    = var.db_server_name
   role        = postgresql_role.app_user_fix.name
   schema      = "public"
   object_type = "schema"
@@ -226,7 +229,7 @@ resource "postgresql_grant" "schema_usage_fix" {
 
 resource "postgresql_grant" "table_privs_fix" {
   provider    = postgresql.master
-  database    = var.db_name
+  database    = var.db_server_name
   role        = postgresql_role.app_user_fix.name
   schema      = "public"
   object_type = "table"
@@ -249,7 +252,7 @@ resource "postgresql_grant" "table_privs_fix" {
 
 resource "postgresql_grant" "sequence_privs_fix" {
   provider    = postgresql.master
-  database    = var.db_name
+  database    = var.db_server_name
   role        = postgresql_role.app_user_fix.name
   schema      = "public"
   object_type = "sequence"

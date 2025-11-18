@@ -1,23 +1,13 @@
-aws_region           = "us-east-1"
-allowed_cidr         = "0.0.0.0/0"
+aws_region   = "us-east-1"
+allowed_cidr = "0.0.0.0/0"
+aurora_engine_version = "15.12"
+db_server_name  = "tfdbserver"
+db_name     = "tfdb"
+db_username     = "appuserfix"
+master_username = "dbmaster"
+db_instance_class    = "db.t3.medium"
+db_subnet_group_name = "aurora-subnet-group-fix"
+security_group_name  = "aurora-sg-fix"
 
-aurora_engine_version = "17.4"
 
-db_name      = "databaseapplication"
-app_db_name  = "appdb"
-db_username  = "dbappuser"
-master_username = "dbmasteruser"
 
-db_instance_class      = "db.t3.medium"
-db_subnet_group_name   = "aurora-subnet-group-fix"
-security_group_name    = "aurora-sg-fix"
-cluster_identifier     = "tfauroraclusterfix"
-instance_identifier    = "tfaurorainstancefix"
-
-app_user_secret_name = "dbcredential"
-master_secret_name   = "mastercredential"
-kms_alias_name       = "alias/terraform-secrets-key-fix"
-
-skip_final_snapshot     = true
-backup_retention_period = 7
-preferred_backup_window = "07:00-09:00"

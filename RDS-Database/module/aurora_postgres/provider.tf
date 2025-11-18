@@ -30,7 +30,7 @@ provider "postgresql" {
   port      = 5432
   username  = local.master_secret.username
   password  = local.master_secret.password
-  database  = var.db_name
+  database  = var.db_server_name
   sslmode   = "require"
   superuser = false
 }
