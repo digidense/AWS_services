@@ -1,3 +1,8 @@
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
 variable "allowed_cidr" {
   description = "CIDR allowed to connect to the Aurora cluster"
   type        = string

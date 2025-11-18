@@ -3,8 +3,8 @@ module "aurora" {
 
   allowed_cidr            = var.allowed_cidr
   aurora_engine_version   = var.aurora_engine_version
-  db_name                 = var.db_server_name
-  app_db_name             = var.db_name
+  db_server_name          = var.db_server_name
+  db_name                 = var.db_name
   db_username             = var.db_username
   master_username         = var.master_username
   db_instance_class       = var.db_instance_class
