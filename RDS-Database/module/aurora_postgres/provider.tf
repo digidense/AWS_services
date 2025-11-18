@@ -24,6 +24,10 @@ locals {
   master_secret = jsondecode(data.aws_secretsmanager_secret_version.master.secret_string)
 }
 
+provider "aws" {
+  region = var.aws_region
+}
+
 provider "postgresql" {
   alias     = "master"
   host      = aws_rds_cluster.aurora.endpoint
