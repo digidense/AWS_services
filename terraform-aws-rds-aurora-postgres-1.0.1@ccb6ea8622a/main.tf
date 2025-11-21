@@ -45,7 +45,7 @@ resource "aws_kms_alias" "secrets_kms_alias" {
 #################################################
 
 resource "aws_secretsmanager_secret" "aurora_master_credentials" {
-  name = "${var.cluster_name}-master-credentials"
+  name = "${var.cluster_name}-flash"
 
   # Choose KMS: if a separate secrets_kms was created use it,
   # otherwise use the aurora_secrets_kms
@@ -165,7 +165,7 @@ resource "aws_rds_cluster_instance" "aurora" {
   performance_insights_enabled = var.performance_insights_enabled
   monitoring_interval          = var.monitoring_interval
   monitoring_role_arn          = var.monitoring_interval > 0 ? aws_iam_role.rds_enhanced_monitoring[0].arn : null
-  publicly_accessible          = true
+  publicly_accessible          = false
   tags                         = var.tags
 }
 
@@ -222,34 +222,35 @@ locals {
 
   # Step 1: build a flat list of { db_name, schema_name }
   db_schema_list = flatten([
-    for db in var.databases : [
-      for s in db.schemas : {
-        db_name     = db.name
-        schema_name = s
-      }
-    ]
+  for db in var.databases : [
+  for s in db.schemas : {
+    db_name     = db.name
+    schema_name = s
+  }
+  ]
   ])
 
   # Step 2: convert that list into a map:
   # "db_name.schema_name" => { db_name = "", schema_name = "" }
   db_schemas = {
-    for item in local.db_schema_list :
-    "${item.db_name}.${item.schema_name}" => {
-      db_name     = item.db_name
-      schema_name = item.schema_name
-    }
+  for item in local.db_schema_list :
+  "${item.db_name}.${item.schema_name}" => {
+    db_name     = item.db_name
+    schema_name = item.schema_name
+  }
   }
 
   # Tables map from var.tables
   # key: "db.schema.table"
   tables_map = {
-    for t in var.tables :
-    "${t.db_name}.${t.schema_name}.${t.table_name}" => t
+  for t in var.tables :
+  "${t.db_name}.${t.schema_name}.${t.table_name}" => t
   }
 }
 
 ############################################
 # POSTGRESQL PROVIDER (FOR EXISTING INSTANCE)
+# Only actually used when enable_db_bootstrap = true
 ############################################
 
 provider "postgresql" {
@@ -261,7 +262,7 @@ provider "postgresql" {
   sslmode  = "require"
 
   # Your user is not SUPERUSER
-  superuser = false
+  superuser       = false
   connect_timeout = 300
 }
 
@@ -270,7 +271,7 @@ provider "postgresql" {
 ############################################
 
 resource "postgresql_database" "databases" {
-  for_each = { for db in var.databases : db.name => db }
+  for_each = var.enable_db_bootstrap ? { for db in var.databases : db.name => db } : {}
 
   name             = each.value.name
   owner            = var.master_username
@@ -286,7 +287,7 @@ resource "postgresql_database" "databases" {
 ############################################
 
 resource "postgresql_schema" "schemas" {
-  for_each = local.db_schemas
+  for_each = var.enable_db_bootstrap ? local.db_schemas : {}
 
   name     = each.value.schema_name
   database = each.value.db_name
@@ -302,7 +303,7 @@ resource "postgresql_schema" "schemas" {
 # Uses local-exec psql command. Ensure psql binary available.
 ############################################
 resource "null_resource" "tables" {
-  for_each = local.tables_map
+  for_each = var.enable_db_bootstrap ? local.tables_map : {}
 
   provisioner "local-exec" {
     command = <<EOT
@@ -320,7 +321,6 @@ EOT
   ]
 }
 
-
 ############################################
 # APP USER CREATION
 ############################################
@@ -332,6 +332,7 @@ resource "random_password" "app_user" {
 }
 
 resource "postgresql_role" "app_user" {
+  count    = var.enable_db_bootstrap ? 1 : 0
   name     = var.app_user_name
   login    = true
   password = random_password.app_user.result
@@ -343,21 +344,21 @@ resource "postgresql_role" "app_user" {
 
 # Grant CONNECT + TEMP on each database
 resource "postgresql_grant" "app_user_db" {
-  for_each = postgresql_database.databases
+  for_each = var.enable_db_bootstrap ? postgresql_database.databases : {}
 
   database    = each.key
-  role        = postgresql_role.app_user.name
+  role        = postgresql_role.app_user[0].name
   object_type = "database"
   privileges  = ["CONNECT", "TEMPORARY"]
 }
 
 # Grant default privileges on public schema for each database
 resource "postgresql_default_privileges" "app_user_public_schema" {
-  for_each = postgresql_database.databases
+  for_each = var.enable_db_bootstrap ? postgresql_database.databases : {}
 
   database    = each.key
   schema      = "public"
-  role        = postgresql_role.app_user.name
+  role        = postgresql_role.app_user[0].name
   owner       = var.master_username
   object_type = "table"
   privileges  = ["INSERT", "UPDATE", "DELETE", "SELECT"]
@@ -369,6 +370,7 @@ resource "postgresql_default_privileges" "app_user_public_schema" {
 ############################################
 
 resource "aws_secretsmanager_secret" "app_user" {
+  # Option 1: always create (recommended)
   name       = var.app_user_secret_name
   kms_key_id = length(aws_kms_key.secrets_kms) > 0 ? aws_kms_key.secrets_kms[0].arn : null
 

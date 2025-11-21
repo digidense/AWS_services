@@ -134,7 +134,7 @@ variable "parameter_group_family" {
 variable "app_user_secret_name" {
   description = "Name of the Secrets Manager secret to store the app user's DB credentials"
   type        = string
-  default     = "secret-flash-drive"
+  default     = "secret-flash"
 }
 
 variable "cluster_parameters" {
@@ -195,3 +195,8 @@ variable "app_user_name" {
   default     = "db-app-user"
 }
 
+variable "enable_db_bootstrap" {
+  description = "Enable PostgreSQL objects creation (DB/schema/tables/app user)"
+  type        = bool
+  default     = false
+}
