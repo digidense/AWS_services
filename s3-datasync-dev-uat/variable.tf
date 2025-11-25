@@ -1,7 +1,6 @@
 variable "region" {
   type        = string
   description = "AWS region for both accounts"
-  default     = "ap-southeast-1"
 }
 
 variable "dev_profile" {
@@ -28,5 +27,8 @@ variable "uat_bucket_name" {
 variable "run_promotion" {
   type        = bool
   description = "If true, start the DataSync task in this apply"
-  default     = false
+}
+
+variable "uat_account_id" {
+  type = string
 }
