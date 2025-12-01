@@ -9,7 +9,7 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 }
 
 resource "aws_iam_role" "lambda_role" {
-  name               = "lambda-securityhub-role-09"
+  name               = "lambda-securityhub-role-09a"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
 }
 

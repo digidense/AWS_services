@@ -70,6 +70,7 @@ def lambda_handler(event, context):
 
         # ----------------------------------------------------
         # Get ONLY kube-bench Security Hub findings
+        # ProductName is exactly "kube-bench"
         # ----------------------------------------------------
         kube_bench_filters = {
             "ProductName": [
@@ -78,30 +79,15 @@ def lambda_handler(event, context):
                     "Comparison": "EQUALS"
                 }
             ]
-            # If ProductName differs, you can use CONTAINS or ProductArn instead.
-            # Example:
-            # "ProductName": [
-            #     {
-            #         "Value": "kube-bench",
-            #         "Comparison": "CONTAINS"
-            #     }
-            # ]
-            # or
-            # "ProductArn": [
-            #     {
-            #         "Value": "kube-bench",
-            #         "Comparison": "CONTAINS"
-            #     }
-            # ]
         }
 
         paginator = securityhub.get_paginator('get_findings')
         page_iterator = paginator.paginate(Filters=kube_bench_filters)
         all_findings = []
 
-        for page in page_iterator:
+        for page_num, page in enumerate(page_iterator, start=1):
             findings = page.get('Findings', [])
-            logger.info(f"Fetched {len(findings)} kube-bench findings from one page")
+            logger.info(f"[Page {page_num}] Fetched {len(findings)} kube-bench findings from one page")
             all_findings.extend(findings)
 
         logger.info(f"Total kube-bench findings collected: {len(all_findings)}")
