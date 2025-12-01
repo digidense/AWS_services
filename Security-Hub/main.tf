@@ -29,7 +29,7 @@ module "iam" {
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = "${path.module}/lambda"          # <--- lambda folder
-  output_path = "${path.module}/lambda_function.zip"
+  output_path = "${path.module}/handler.zip"
 }
 
 resource "aws_lambda_function" "securityhub_export" {
@@ -59,3 +59,4 @@ module "event_rules" {
   lambda_function_arn  = aws_lambda_function.securityhub_export.arn
   lambda_function_name = aws_lambda_function.securityhub_export.function_name
 }
+
