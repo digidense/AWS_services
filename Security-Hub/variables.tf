@@ -6,14 +6,14 @@ variable "region" {
 
 variable "bucket_name" {
   type        = string
-  default     = "securityhub-findings-demo-bucket3456"
+  default     = "securityhub-findings-demo-bucket345645"
   description = "Name of the S3 bucket for SecurityHub findings"
 }
 
 variable "sns_email" {
   type        = string
   description = "Email address for SNS notifications"
-  default     = "shijinjoy76@gmail.com"
+  default     = "ashwinikanagaraj3@gmail.com"
 }
 
 variable "lambda_function_name" {

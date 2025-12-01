@@ -58,37 +58,79 @@ def findings_to_rows(findings):
 def lambda_handler(event, context):
     """Main Lambda entry point."""
     try:
-        logger.info("=== Starting Security Hub export ===")
-        logger.info(f"Environment: S3_BUCKET={S3_BUCKET}, SNS_TOPIC_ARN={SNS_TOPIC_ARN}, PRESIGNED_EXPIRATION={PRESIGNED_EXPIRATION}")
+        logger.info("=== Starting Security Hub export (kube-bench only) ===")
+        logger.info(
+            f"Environment: S3_BUCKET={S3_BUCKET}, SNS_TOPIC_ARN={SNS_TOPIC_ARN}, "
+            f"PRESIGNED_EXPIRATION={PRESIGNED_EXPIRATION}"
+        )
 
         if not S3_BUCKET or not SNS_TOPIC_ARN:
             logger.error("Missing environment variables: S3_BUCKET or SNS_TOPIC_ARN")
             return {"error": "Missing environment variables"}
 
-        # Get Security Hub findings
+        # ----------------------------------------------------
+        # Get ONLY kube-bench Security Hub findings
+        # ----------------------------------------------------
+        kube_bench_filters = {
+            "ProductName": [
+                {
+                    "Value": "kube-bench",
+                    "Comparison": "EQUALS"
+                }
+            ]
+            # If ProductName differs, you can use CONTAINS or ProductArn instead.
+            # Example:
+            # "ProductName": [
+            #     {
+            #         "Value": "kube-bench",
+            #         "Comparison": "CONTAINS"
+            #     }
+            # ]
+            # or
+            # "ProductArn": [
+            #     {
+            #         "Value": "kube-bench",
+            #         "Comparison": "CONTAINS"
+            #     }
+            # ]
+        }
+
         paginator = securityhub.get_paginator('get_findings')
-        page_iterator = paginator.paginate()
+        page_iterator = paginator.paginate(Filters=kube_bench_filters)
         all_findings = []
 
         for page in page_iterator:
             findings = page.get('Findings', [])
-            logger.info(f"Fetched {len(findings)} findings from one page")
+            logger.info(f"Fetched {len(findings)} kube-bench findings from one page")
             all_findings.extend(findings)
 
-        logger.info(f"Total findings collected: {len(all_findings)}")
+        logger.info(f"Total kube-bench findings collected: {len(all_findings)}")
 
         if not all_findings:
-            logger.info("No findings retrieved from Security Hub")
-            message = f"Security Hub returned no findings at {datetime.datetime.utcnow().isoformat()}"
-            sns.publish(TopicArn=SNS_TOPIC_ARN, Message=message, Subject="Security Hub: No Findings")
-            return {"message": "no findings"}
+            logger.info("No kube-bench findings retrieved from Security Hub")
+            message = (
+                f"Security Hub returned no kube-bench findings at "
+                f"{datetime.datetime.utcnow().isoformat()} UTC"
+            )
+            sns.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Message=message,
+                Subject="Security Hub: No kube-bench Findings"
+            )
+            return {"message": "no kube-bench findings"}
 
         # Convert findings to CSV
         rows = findings_to_rows(all_findings)
-        fieldnames = ['Id', 'Title', 'Description', 'Severity', 'FirstObservedAt',
-                      'LastObservedAt', 'ProductArn', 'GeneratorId', 'Resources']
+        fieldnames = [
+            'Id', 'Title', 'Description', 'Severity', 'FirstObservedAt',
+            'LastObservedAt', 'ProductArn', 'GeneratorId', 'Resources'
+        ]
 
-        filename = f"securityhub-findings-{datetime.datetime.utcnow().strftime('%Y-%m-%dT%H%M%SZ')}-{uuid.uuid4().hex}.csv"
+        filename = (
+            f"securityhub-kube-bench-findings-"
+            f"{datetime.datetime.utcnow().strftime('%Y-%m-%dT%H%M%SZ')}-"
+            f"{uuid.uuid4().hex}.csv"
+        )
         tmp_path = f"/tmp/{filename}"
 
         logger.info(f"Writing {len(rows)} rows to temporary file: {tmp_path}")
@@ -97,6 +139,7 @@ def lambda_handler(event, context):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for r in rows:
+                # Clean up newlines to keep CSV tidy
                 for k in r:
                     if isinstance(r[k], str):
                         r[k] = r[k].replace('\n', ' ').replace('\r', ' ')
@@ -121,17 +164,19 @@ def lambda_handler(event, context):
         logger.info(f"Presigned URL generated: {presigned_url}")
 
         # Send SNS notification
-        subject = "Security Hub Findings CSV Export"
+        subject = "Security Hub kube-bench Findings CSV Export"
         message = (
-            f"Security Hub findings exported successfully at {datetime.datetime.utcnow().isoformat()} UTC.\n\n"
-            f"Download link (expires in {PRESIGNED_EXPIRATION} seconds):\n{presigned_url}\n\n"
+            f"kube-bench Security Hub findings exported successfully at "
+            f"{datetime.datetime.utcnow().isoformat()} UTC.\n\n"
+            f"Download link (expires in {PRESIGNED_EXPIRATION} seconds):\n"
+            f"{presigned_url}\n\n"
             f"S3 location: s3://{S3_BUCKET}/{s3_key}"
         )
 
         logger.info("Publishing SNS notification...")
         sns.publish(TopicArn=SNS_TOPIC_ARN, Message=message, Subject=subject)
 
-        logger.info("=== Export completed successfully ===")
+        logger.info("=== kube-bench export completed successfully ===")
 
         return {
             "status": "success",

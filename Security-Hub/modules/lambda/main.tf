@@ -1,7 +1,7 @@
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = "${path.root}/lambda"
-  output_path = "${path.root}/lambda_function.zip"
+  output_path = "${path.root}/handler.zip"
 }
 
 resource "aws_lambda_function" "securityhub_export" {
