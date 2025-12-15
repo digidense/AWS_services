@@ -24,7 +24,7 @@ variable "db_server_name" {
 variable "db_name" {
   description = "Application database name (inside cluster, created via postgresql provider)"
   type        = string
-  default     = "tfdb"
+  default     = "copilot-server-01"
 }
 
 variable "db_username" {
