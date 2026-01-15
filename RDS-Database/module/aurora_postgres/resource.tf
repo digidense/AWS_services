@@ -159,7 +159,7 @@ resource "aws_rds_cluster" "aurora" {
 
 resource "aws_rds_cluster_instance" "writer" {
   identifier                   = "tf-aurora-instance-1-fix"
-  cluster_identifier           = "aurora-cluster"
+  cluster_identifier           = aws_rds_cluster.aurora.id
   instance_class               = "db.r6g.large" # change to smaller for cheaper (e.g. db.t3.medium)
   engine                       = aws_rds_cluster.aurora.engine
   engine_version               = aws_rds_cluster.aurora.engine_version
@@ -167,6 +167,7 @@ resource "aws_rds_cluster_instance" "writer" {
   db_subnet_group_name         = aws_db_subnet_group.aurora_subnets.name
   performance_insights_enabled = true
   monitoring_interval          = 60
+  monitoring_role_arn          = aws_iam_role.rds_monitoring_role.arn
   depends_on                   = [aws_rds_cluster.aurora]
 }
 
@@ -196,6 +197,26 @@ resource "postgresql_role" "app_user_fix" {
     aws_rds_cluster_instance.writer,
     postgresql_database.app_db_fix
   ]
+}
+
+resource "aws_iam_role" "rds_monitoring_role" {
+  name = "rds-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "monitoring.rds.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring_attach" {
+  role       = aws_iam_role.rds_monitoring_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
 resource "postgresql_grant" "app_user_db_grant_fix" {
@@ -267,4 +288,64 @@ resource "postgresql_grant" "sequence_privs_fix" {
     postgresql_database.app_db_fix,
     postgresql_role.app_user_fix
   ]
+}
+
+resource "aws_lambda_function" "rotation" {
+  function_name = "aurora-db-rotation-fix"
+  handler       = "index.handler"
+  runtime       = "python3.9"
+
+  role     = aws_iam_role.lambda_rotation_role.arn
+  filename = "lambda_rotation.py.zip"
+
+}
+
+resource "aws_iam_role" "lambda_rotation_role" {
+  name = "lambda_rotation_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rotation_basic" {
+  role       = aws_iam_role.lambda_rotation_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "rotation_secrets" {
+  role       = aws_iam_role.lambda_rotation_role.name
+  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+}
+
+resource "aws_secretsmanager_secret_rotation" "app_user_rotation" {
+  secret_id           = aws_secretsmanager_secret.app_db_user_fix.id
+  rotation_lambda_arn = aws_lambda_function.rotation.arn
+  rotation_rules {
+    automatically_after_days = 30
+  }
+}
+
+resource "aws_secretsmanager_secret_rotation" "master_rotation" {
+  secret_id           = aws_secretsmanager_secret.master_creds_fix.id
+  rotation_lambda_arn = aws_lambda_function.rotation.arn
+  rotation_rules {
+    automatically_after_days = 30
+  }
+  depends_on = [
+    aws_lambda_permission.allow_secretsmanager
+  ]
+}
+resource "aws_lambda_permission" "allow_secretsmanager" {
+  statement_id  = "AllowSecretsManagerInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.rotation.function_name
+  principal     = "secretsmanager.amazonaws.com"
 }

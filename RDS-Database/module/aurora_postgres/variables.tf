@@ -18,13 +18,13 @@ variable "aurora_engine_version" {
 variable "db_server_name" {
   description = "Initial database name for Aurora cluster (created by RDS)"
   type        = string
-  default     = "copilot-github-server-02"
+  default     = "tfdbserver"
 }
 
 variable "db_name" {
   description = "Application database name (inside cluster, created via postgresql provider)"
   type        = string
-  default     = "copilot-server-01"
+  default     = "tfdb"
 }
 
 variable "db_username" {
